@@ -1,4 +1,5 @@
 from mesh.mesh import Mesh
+from mesh.point import Point
 
 class Utils:
     @staticmethod
@@ -28,6 +29,26 @@ class Utils:
         with open("output/newton", "w") as file:
             for n in mesh.newton:
                 file.write(f"{n.element} {n.local_border} {n.value}\n")
+
+    @staticmethod
+    def save_solution(mesh: Mesh, solution: list[float]):
+        dict_solution: dict[int, tuple[Point, float]] = {}
+
+        for element in mesh.elements:
+            for i in range(9):
+                g = element.get_global_basis_index(i)
+
+                if g in dict_solution:
+                    continue
+
+                global_point = element.get_basis_node_position(i, lambda idx: mesh.points[idx])
+                dict_solution[g] = (global_point, solution[g])
+
+        ordered_solution = sorted(dict_solution.items(), key=lambda x: x[0])
+
+        with open("output/solution", "w") as file:
+            for global_idx, (point, value) in ordered_solution:
+                file.write(f"{point.r} {point.z} {value}\n")
 
     @staticmethod
     def save_basis_info(mesh: Mesh):

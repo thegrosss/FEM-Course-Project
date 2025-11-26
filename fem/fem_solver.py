@@ -25,7 +25,7 @@ class FemSolver:
         Utils.print_vector(vector, "global_vector")
 
         self.solver.compute(matrix, vector)
-        Utils.print_vector(self.solver.solution, "solution")
+        Utils.save_solution(self.mesh, self.solver.solution)
 
     def compare_solution_with_exact_in_nodes(self):
         values: dict[int, float] = {}

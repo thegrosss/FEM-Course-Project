@@ -11,7 +11,7 @@
     {
       "lmbda": 1.0,
       "gamma": 0.0,
-      "f": "f(x,y) = -(16*x*x + 12*y*y)"
+      "f": "f(x,y) = -4"
     }
   ],
   "borders": [
@@ -32,12 +32,12 @@
     },
     {
       "points_indices": [2, 3],
-      "boundary_type": 1,
-      "formula_index": 0
+      "boundary_type": 2,
+      "formula_index": 1
     }
   ],
   "boundary_formulas": [
-    "f(x,y) = x*x*x*x + y*y*y*y",
+    "f(x,y) = x*x + y*y*y*y",
     "f(x,y) = 1.0",
     "Ubeta(x,y) = x*x + y + 0.5; beta = 2.0"
   ],
