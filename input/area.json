@@ -10,8 +10,8 @@
   "area_properties": [
     {
       "lmbda": 1.0,
-      "gamma": 0.0,
-      "f": "f(x,y) = -4"
+      "gamma": 3.5,
+      "f": "f(x,y) = -4.0 + 3.5 * (x*x + y)"
     }
   ],
   "borders": [
@@ -27,19 +27,19 @@
     },
     {
       "points_indices": [1, 3],
-      "boundary_type": 1,
-      "formula_index": 0
+      "boundary_type": 3,
+      "formula_index": 2
     },
     {
       "points_indices": [2, 3],
-      "boundary_type": 2,
-      "formula_index": 1
+      "boundary_type": 1,
+      "formula_index": 0
     }
   ],
   "boundary_formulas": [
-    "f(x,y) = x*x + y*y*y*y",
+    "f(x,y) = x*x + y",
     "f(x,y) = 1.0",
-    "Ubeta(x,y) = x*x + y + 0.5; beta = 2.0"
+    "Ubeta(x,y) = x*x + x + y; beta = 2.0"
   ],
   "abscissa_splits": 3,
   "ordinate_splits": 3,

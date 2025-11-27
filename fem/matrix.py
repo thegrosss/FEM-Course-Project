@@ -17,7 +17,7 @@ class Matrix:
             for j in range(self.columns):
                 self.storage[i][j] = value
 
-    def dot(self, vector: list[float], product: list[float]):
+    def dot(self, vector: list[float]):
         if self.columns != len(vector):
             raise Exception("Numbers of columns not equal to size of vector")
 
@@ -25,3 +25,5 @@ class Matrix:
         for i in range(self.rows):
             for j in range(self.columns):
                 product[i] += self.storage[i][j] * vector[j]
+
+        return product

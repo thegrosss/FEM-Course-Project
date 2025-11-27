@@ -5,6 +5,7 @@ from fem.integrator import Integrator
 from portrait.portrait_builder import PortraitBuilder
 from fem.sparse_matrix import SparseMatrix
 from mesh.biquadratic_quad_element import BiquadraticQuadElement
+from typing import List, Tuple, Set
 
 class MatrixAssembler:
     def __init__(self, mesh: Mesh):
@@ -12,10 +13,10 @@ class MatrixAssembler:
 
         self.ig, self.jg = PortraitBuilder.generate_portrait(mesh)
 
-        self.G = Matrix(9,9)
-        self.M = Matrix(9,9)
-        self.local_b: list[float] = [0.0] * 9
-        self.local_f: list[float] = [0.0] * 9
+        self.G = Matrix(9, 9)    # stiffness (local)
+        self.M = Matrix(9, 9)    # mass (local)
+        self.local_b: List[float] = [0.0] * 9   # local RHS (M * f)
+        self.local_f: List[float] = [0.0] * 9   # local source values
 
         self.global_b = [0.0] * (len(self.ig) - 1)
         self.global_matrix = SparseMatrix(self.ig, self.jg)
@@ -33,28 +34,29 @@ class MatrixAssembler:
 
     def assemble_global_slae(self):
         self.global_matrix.clear()
+        # обнуляем глобальную правую часть
         self.global_b = [0.0] * len(self.global_b)
 
         for ielem in range(len(self.mesh.elements)):
-            lmbda = self.mesh.materials[self.mesh.elements[ielem].area_number].lmbda
-            gamma = self.mesh.materials[self.mesh.elements[ielem].area_number].gamma
+            mat = self.mesh.materials[self.mesh.elements[ielem].area_number]
+            lmbda = mat.lmbda
+            gamma = mat.gamma
+
             self.assemble_local_slae(ielem)
 
             for i in range(9):
                 global_i = self.mesh.elements[ielem].get_global_basis_index(i)
-                value = self.local_b[i]
-                self.global_b[global_i] += value
+                self.global_b[global_i] += self.local_b[i]
 
                 for j in range(9):
                     global_j = self.mesh.elements[ielem].get_global_basis_index(j)
                     value = lmbda * self.G[i, j] + gamma * self.M[i, j]
-
                     self.global_matrix.add(global_i, global_j, value)
 
     def account_dirichlet(self):
         # сначала соберем все узлы для первого краевого в одном месте, чтобы проще учитывать
-        all_dirichlet: list[tuple[int, float]] = []
-        processed_nodes = set()
+        all_dirichlet: List[Tuple[int, float]] = []
+        processed_nodes: Set[int] = set()
 
         for d in self.mesh.dirichlet:
             element = self.mesh.elements[d.element]
@@ -64,7 +66,8 @@ class MatrixAssembler:
                 global_basis = element.get_global_basis_index(local_basis_index)
 
                 # Каждый узел нужно обработать только 1 раз
-                if global_basis in processed_nodes: continue
+                if global_basis in processed_nodes:
+                    continue
                 processed_nodes.add(global_basis)
 
                 global_point = element.get_basis_node_position(local_basis_index, lambda idx: self.mesh.points[idx])
@@ -75,7 +78,7 @@ class MatrixAssembler:
         # если обратиться к последнему элементу и к его последней базисной функции, то можно узнать их количество
         # т.к. мы все пронумеровали последовательно
         f_count = self.mesh.elements[-1].basis_indices[-1] + 1
-        bc1: list[int] = [-1 for _ in range(f_count)]
+        bc1: List[int] = [-1 for _ in range(f_count)]
 
         for i in range(len(all_dirichlet)):
             bc1[all_dirichlet[i][0]] = i
@@ -101,7 +104,6 @@ class MatrixAssembler:
                     if bc1[k] != -1:
                         self.global_b[i] -= self.global_matrix.gg[j] * self.global_b[k]
                         self.global_matrix.gg[j] = 0.0
-
 
     def account_neumann(self):
         # если 2х краевых нет, то и учитывать нечего
@@ -138,13 +140,12 @@ class MatrixAssembler:
                     f = lambda r: r * Basis.psi_1d(i, rk, rk1, r)
                     self.global_b[global_basis] += n.value(p.r, p.z) * Integrator.integration1D(f, rk, rk1)
 
-
     def account_newton(self):
         # если 3х краевых нет, то и учитывать нечего
         if len(self.mesh.newton) == 0:
             return
 
-        total_local_mass_matrix = Matrix(3,3)
+        total_local_mass_matrix = Matrix(3, 3)
         flow_vector = [0.0, 0.0, 0.0]
         local_vector = [0.0, 0.0, 0.0]
 
@@ -169,19 +170,19 @@ class MatrixAssembler:
                 for i in range(3):
                     for j in range(i + 1):
                         f = lambda z: Basis.psi_1d(i, zk, zk1, z) * Basis.psi_1d(j, zk, zk1, z)
-                        total_local_mass_matrix[i][j] = total_local_mass_matrix[j][i] \
-                            = beta * rk * Integrator.integration1D(f, zk, zk1)
+                        val = beta * rk * Integrator.integration1D(f, zk, zk1)
+                        total_local_mass_matrix[i, j] = val
+                        total_local_mass_matrix[j, i] = val
             # нижняя или верхняя
             else:
-                # здесь еще в начале идет умножение на r, т.к это якобиан, при этом по горизонтальной оси изменяется r.
-                # поэтому нужно внести его под интеграл
                 for i in range(3):
                     for j in range(i + 1):
                         f = lambda r: r * Basis.psi_1d(i, rk, rk1, r) * Basis.psi_1d(j, rk, rk1, r)
-                        total_local_mass_matrix[i][j] = total_local_mass_matrix[j][i] \
-                            = beta * Integrator.integration1D(f, rk, rk1)
+                        val = beta * Integrator.integration1D(f, rk, rk1)
+                        total_local_mass_matrix[i, j] = val
+                        total_local_mass_matrix[j, i] = val
 
-            Matrix.dot(total_local_mass_matrix, flow_vector, local_vector)
+            local_vector = Matrix.dot(total_local_mass_matrix, flow_vector)
 
             for i in range(3):
                 global_i = element.get_global_basis_index(basis_by_border[i])
@@ -189,8 +190,7 @@ class MatrixAssembler:
 
                 for j in range(i + 1):
                     global_j = element.get_global_basis_index(basis_by_border[j])
-                    self.global_matrix.add(global_i, global_j, total_local_mass_matrix[i][j])
-
+                    self.global_matrix.add(global_i, global_j, total_local_mass_matrix[i, j])
 
     def assemble_local_slae(self, ielem: int):
         element = self.mesh.elements[ielem]
@@ -203,8 +203,9 @@ class MatrixAssembler:
         rk1 = p2.r
         zk1 = p2.z
 
+        # локальная матрица жесткости G
         for i in range(9):
-            for j in range(i+1):
+            for j in range(i + 1):
                 def f(r: float, z: float):
                     dpsi_i_r = Basis.d_psi(self.mesh, ielem, i, r, z, "r")
                     dpsi_j_r = Basis.d_psi(self.mesh, ielem, j, r, z, "r")
@@ -213,26 +214,24 @@ class MatrixAssembler:
                     return (dpsi_i_r * dpsi_j_r + dpsi_i_z * dpsi_j_z) * r
 
                 integral = Integrator.integration2D(f, rk, rk1, zk, zk1)
-
                 self.G[i, j] = integral
                 self.G[j, i] = integral
 
+        # локальная матрица масс M
         for i in range(9):
             for j in range(i + 1):
                 def f(r: float, z: float):
                     psi_i = Basis.psi(self.mesh, ielem, i, r, z)
                     psi_j = Basis.psi(self.mesh, ielem, j, r, z)
-
                     return psi_i * psi_j * r
 
                 integral = Integrator.integration2D(f, rk, rk1, zk, zk1)
-
                 self.M[i, j] = integral
                 self.M[j, i] = integral
 
         f = self.mesh.materials[self.mesh.elements[ielem].area_number].f
         for i in range(9):
-            point_i = element.get_basis_node_position(i, lambda  idx: self.mesh.points[idx])
+            point_i = element.get_basis_node_position(i, lambda idx: self.mesh.points[idx])
             self.local_f[i] = f(point_i.r, point_i.z)
 
         for i in range(9):
