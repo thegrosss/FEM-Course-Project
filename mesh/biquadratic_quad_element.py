@@ -6,7 +6,7 @@ class BiquadraticQuadElement:
         [0, 1, 2],  # низ
         [0, 3, 6],  # лево
         [2, 5, 8],  # право
-        [6, 7, 8]  # верх
+        [6, 7, 8]   # верх
     ]
 
     def __init__(self, nodes: list[int], area_number: int):
@@ -34,17 +34,6 @@ class BiquadraticQuadElement:
             Edge(nodes[1], nodes[3]),
             Edge(nodes[2], nodes[3])
         ]
-
-    def get_global_node_index_for_basis(self, local_basis_index: int) -> int:
-        if local_basis_index < 0 or local_basis_index > 8:
-            raise IndexError("local_basis_index out of range")
-
-        corner = self.local_basis_to_physical_nodes[local_basis_index]
-
-        if corner == -1:
-            return -1
-
-        return self.physical_nodes_indices[corner]
 
     def set_basis_index(self, local_basis_index: int, global_index: int):
         self.basis_indices[local_basis_index] = global_index
