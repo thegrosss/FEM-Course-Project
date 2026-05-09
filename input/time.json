@@ -1,0 +1,14 @@
+{
+  "time_interval": {
+    "time_begin": 0.0,
+    "time_end": 1.0
+  },
+  "parameters": {
+    "nt": 10,
+    "kt": 1.0,
+    "type": 0,
+    "refinement": 0
+  },
+  "exact_solution": "u(x,y,t) = x*x + y + t*t",
+  "initial_condition": null
+}

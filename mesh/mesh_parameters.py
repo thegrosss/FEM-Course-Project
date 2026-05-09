@@ -5,6 +5,7 @@ from mesh.boundary_type import BoundaryType
 from mesh.area_property import AreaProperty
 
 from mesh.boundary_formula import BoundaryFormula, BoundaryFormulaS3
+from mesh.formula_parser import parse_formula
 
 
 class Border:
@@ -38,29 +39,12 @@ class MeshParameters:
                 return Point(r, z)
 
             def parse_function(s: str):
-                import math
-
-                safe_dict = {
-                    'math': math,
-                    'exp': math.exp,
-                    'sin': math.sin,
-                    'cos': math.cos,
-                    'tan': math.tan,
-                    'log': math.log,
-                    'log10': math.log10,
-                    'sqrt': math.sqrt,
-                    'pi': math.pi,
-                    'e': math.e
-                }
-
                 if "Ubeta" in s:
                     ubeta, beta = s.split(";")
-                    ubeta = ubeta.replace("Ubeta(x,y) = ", "")
-                    beta = beta.replace("beta = ", "")
-                    return BoundaryFormulaS3(eval(f"lambda x, y: {ubeta}", safe_dict), float(beta))
+                    beta = beta.replace("beta", "").replace("=", "").strip()
+                    return BoundaryFormulaS3(parse_formula(ubeta), float(beta))
                 else:
-                    s = s.replace("f(x,y) = ", "")
-                    return BoundaryFormula(eval(f"lambda x, y: {s}", safe_dict))
+                    return BoundaryFormula(parse_formula(s))
 
             params = MeshParameters()
             params.abscissa_points_count = data["abscissa_points_count"]
@@ -70,9 +54,14 @@ class MeshParameters:
 
             for ap in data["area_properties"]:
                 params.area_properties.append(
-                    AreaProperty(lmbda=ap["lmbda"],
-                                 gamma=ap["gamma"],
-                                 f=parse_function(ap["f"])))
+                    AreaProperty(
+                        lmbda=ap["lmbda"],
+                        gamma=ap.get("gamma", 0.0),
+                        sigma=ap.get("sigma", ap.get("gamma", 0.0)),
+                        hi=ap.get("hi", 0.0),
+                        f=parse_function(ap.get("f", "f(x,y,t) = 0.0")).value,
+                    )
+                )
 
             params.borders = [
                 Border(

@@ -21,20 +21,48 @@ class MatrixAssembler:
         self.global_b = [0.0] * (len(self.ig) - 1)
         self.global_matrix = SparseMatrix(self.ig, self.jg)
 
+    @staticmethod
+    def _call_formula(function, r: float, z: float, time: float = 0.0, material=None):
+        lmbda = material.lmbda if material is not None else 0.0
+        gamma = material.gamma if material is not None else 0.0
+        sigma = material.sigma if material is not None else 0.0
+        hi = material.hi if material is not None else 0.0
+
+        try:
+            return function(r, z, time, lmbda, gamma, sigma, hi)
+        except TypeError:
+            try:
+                return function(r, z, time)
+            except TypeError:
+                return function(r, z)
+
     def get_slae(self):
         self.assemble_global_slae()
 
-        # сначала учитываются 2 и 3 краевые (порядок неважен)
-        # 1-е краевые учитываются в последнюю очередь
         self.account_newton()
         self.account_neumann()
         self.account_dirichlet()
 
         return self.global_matrix, self.global_b
 
+    def get_hyperbolic_slae(
+            self,
+            time_layers: list[float],
+            time_index: int,
+            q_prev1: list[float],
+            q_prev2: list[float],
+            q_prev3: list[float]):
+        self.assemble_global_hyperbolic_slae(time_layers, time_index, q_prev1, q_prev2, q_prev3)
+
+        time = time_layers[time_index]
+        self.account_newton(time)
+        self.account_neumann(time)
+        self.account_dirichlet(time)
+
+        return self.global_matrix, self.global_b
+
     def assemble_global_slae(self):
         self.global_matrix.clear()
-        # обнуляем глобальную правую часть
         self.global_b = [0.0] * len(self.global_b)
 
         for ielem in range(len(self.mesh.elements)):
@@ -53,30 +81,87 @@ class MatrixAssembler:
                     value = lmbda * self.G[i, j] + gamma * self.M[i, j]
                     self.global_matrix.add(global_i, global_j, value)
 
-    def account_dirichlet(self):
-        # сначала соберем все узлы для первого краевого в одном месте, чтобы проще учитывать
+    def assemble_global_hyperbolic_slae(
+            self,
+            time_layers: list[float],
+            time_index: int,
+            q_prev1: list[float],
+            q_prev2: list[float],
+            q_prev3: list[float]):
+        self.global_matrix.clear()
+        self.global_b = [0.0] * len(self.global_b)
+
+        t = time_layers[time_index]
+        t1 = time_layers[time_index - 1]
+        t2 = time_layers[time_index - 2]
+        t3 = time_layers[time_index - 3]
+
+        d_t03 = t - t3
+        d_t02 = t - t2
+        d_t01 = t - t1
+        d_t13 = t1 - t3
+        d_t12 = t1 - t2
+        d_t23 = t2 - t3
+
+        for ielem in range(len(self.mesh.elements)):
+            mat = self.mesh.materials[self.mesh.elements[ielem].area_number]
+            lmbda = mat.lmbda
+            sigma = mat.sigma
+            hi = mat.hi
+
+            self.assemble_local_slae(ielem, t)
+
+            additive_m = (
+                sigma * (1.0 / d_t03 + 1.0 / d_t02 + 1.0 / d_t01)
+                + 2.0 * hi * (d_t01 + d_t02 + d_t03) / (d_t01 * d_t02 * d_t03)
+            )
+            m_q_prev3 = (
+                sigma * (d_t02 * d_t01) + 2.0 * hi * (d_t02 + d_t01)
+            ) / (d_t23 * d_t13 * d_t03)
+            m_q_prev2 = (
+                sigma * (d_t03 * d_t01) + 2.0 * hi * (d_t03 + d_t01)
+            ) / (d_t23 * d_t12 * d_t02)
+            m_q_prev1 = (
+                sigma * (d_t03 * d_t02) + 2.0 * hi * (d_t03 + d_t02)
+            ) / (d_t13 * d_t12 * d_t01)
+
+            for i in range(9):
+                global_i = self.mesh.elements[ielem].get_global_basis_index(i)
+                self.global_b[global_i] += self.local_b[i]
+
+                for j in range(9):
+                    global_j = self.mesh.elements[ielem].get_global_basis_index(j)
+                    value = lmbda * self.G[i, j] + additive_m * self.M[i, j]
+                    self.global_matrix.add(global_i, global_j, value)
+                    self.global_b[global_i] += self.M[i, j] * (
+                        m_q_prev3 * q_prev3[global_j]
+                        - m_q_prev2 * q_prev2[global_j]
+                        + m_q_prev1 * q_prev1[global_j]
+                    )
+
+    def account_dirichlet(self, time: float = 0.0):
         all_dirichlet: List[Tuple[int, float]] = []
         processed_nodes: Set[int] = set()
 
         for d in self.mesh.dirichlet:
             element = self.mesh.elements[d.element]
+            material = self.mesh.materials[element.area_number]
             basis_by_border = BiquadraticQuadElement.get_basis_by_border(d.local_border)
 
             for local_basis_index in basis_by_border:
                 global_basis = element.get_global_basis_index(local_basis_index)
 
-                # Каждый узел нужно обработать только 1 раз
                 if global_basis in processed_nodes:
                     continue
                 processed_nodes.add(global_basis)
 
                 global_point = element.get_basis_node_position(local_basis_index, lambda idx: self.mesh.points[idx])
 
-                # на диагональ всегда ставим 1, а в правую часть ставим значение функции
-                all_dirichlet.append((global_basis, d.value(global_point.r, global_point.z)))
+                all_dirichlet.append((
+                    global_basis,
+                    self._call_formula(d.value, global_point.r, global_point.z, time, material)
+                ))
 
-        # если обратиться к последнему элементу и к его последней базисной функции, то можно узнать их количество
-        # т.к. мы все пронумеровали последовательно
         f_count = self.mesh.elements[-1].basis_indices[-1] + 1
         bc1: List[int] = [-1 for _ in range(f_count)]
 
@@ -105,14 +190,14 @@ class MatrixAssembler:
                         self.global_b[i] -= self.global_matrix.gg[j] * self.global_b[k]
                         self.global_matrix.gg[j] = 0.0
 
-    def account_neumann(self):
-        # если 2х краевых нет, то и учитывать нечего
+    def account_neumann(self, time: float = 0.0):
         if len(self.mesh.neumann) == 0:
             return
 
         for n in self.mesh.neumann:
             basis_by_border = BiquadraticQuadElement.get_basis_by_border(n.local_border)
             element = self.mesh.elements[n.element]
+            material = self.mesh.materials[element.area_number]
             border_start = element.get_basis_node_position(basis_by_border[0], lambda idx: self.mesh.points[idx])
             border_end = element.get_basis_node_position(basis_by_border[2], lambda idx: self.mesh.points[idx])
             rk = border_start.r
@@ -127,7 +212,11 @@ class MatrixAssembler:
                     global_basis = element.get_global_basis_index(local_basis)
                     p = element.get_basis_node_position(local_basis, lambda idx: self.mesh.points[idx])
                     f = lambda z: Basis.psi_1d(i, zk, zk1, z)
-                    self.global_b[global_basis] += rk * n.value(p.r, p.z) * Integrator.integration1D(f, zk, zk1)
+                    self.global_b[global_basis] += (
+                        rk
+                        * self._call_formula(n.value, p.r, p.z, time, material)
+                        * Integrator.integration1D(f, zk, zk1)
+                    )
             # нижняя или верхняя
             else:
                 for i in range(len(basis_by_border)):
@@ -135,13 +224,13 @@ class MatrixAssembler:
                     global_basis = element.get_global_basis_index(local_basis)
                     p = element.get_basis_node_position(local_basis, lambda idx: self.mesh.points[idx])
 
-                    # здесь еще в начале идет умножение на r, т.к это якобиан, при этом по горизонтальной оси изменяется r.
-                    # поэтому нужно внести его под интеграл
                     f = lambda r: r * Basis.psi_1d(i, rk, rk1, r)
-                    self.global_b[global_basis] += n.value(p.r, p.z) * Integrator.integration1D(f, rk, rk1)
+                    self.global_b[global_basis] += (
+                        self._call_formula(n.value, p.r, p.z, time, material)
+                        * Integrator.integration1D(f, rk, rk1)
+                    )
 
-    def account_newton(self):
-        # если 3х краевых нет, то и учитывать нечего
+    def account_newton(self, time: float = 0.0):
         if len(self.mesh.newton) == 0:
             return
 
@@ -152,6 +241,7 @@ class MatrixAssembler:
         for n in self.mesh.newton:
             basis_by_border = BiquadraticQuadElement.get_basis_by_border(n.local_border)
             element = self.mesh.elements[n.element]
+            material = self.mesh.materials[element.area_number]
             border_start = element.get_basis_node_position(basis_by_border[0], lambda idx: self.mesh.points[idx])
             border_end = element.get_basis_node_position(basis_by_border[2], lambda idx: self.mesh.points[idx])
             beta = n.beta
@@ -163,7 +253,7 @@ class MatrixAssembler:
             for i in range(3):
                 local_basis = basis_by_border[i]
                 p = element.get_basis_node_position(local_basis, lambda idx: self.mesh.points[idx])
-                flow_vector[i] = n.value(p.r, p.z)
+                flow_vector[i] = self._call_formula(n.value, p.r, p.z, time, material)
 
             # левая или правая граница
             if n.local_border == 1 or n.local_border == 2:
@@ -192,8 +282,9 @@ class MatrixAssembler:
                     global_j = element.get_global_basis_index(basis_by_border[j])
                     self.global_matrix.add(global_i, global_j, total_local_mass_matrix[i, j])
 
-    def assemble_local_slae(self, ielem: int):
+    def assemble_local_slae(self, ielem: int, time: float = 0.0):
         element = self.mesh.elements[ielem]
+        material = self.mesh.materials[element.area_number]
 
         p0 = self.mesh.points[element.physical_nodes_indices[0]]
         p2 = self.mesh.points[element.physical_nodes_indices[-1]]
@@ -229,10 +320,10 @@ class MatrixAssembler:
                 self.M[i, j] = integral
                 self.M[j, i] = integral
 
-        f = self.mesh.materials[self.mesh.elements[ielem].area_number].f
+        f = material.f
         for i in range(9):
             point_i = element.get_basis_node_position(i, lambda idx: self.mesh.points[idx])
-            self.local_f[i] = f(point_i.r, point_i.z)
+            self.local_f[i] = self._call_formula(f, point_i.r, point_i.z, time, material)
 
         for i in range(9):
             self.local_b[i] = 0.0

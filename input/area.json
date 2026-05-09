@@ -2,16 +2,18 @@
   "abscissa_points_count": 2,
   "ordinate_points_count": 2,
   "control_points": [
-    "(1.0, 1.0)",
-    "(7.0, 1.0)",
-    "(1.0, 7.0)",
-    "(7.0, 7.0)"
+    "(0.0, 0.0)",
+    "(5.0, 0.0)",
+    "(0.0, 5.0)",
+    "(5.0, 5.0)"
   ],
   "area_properties": [
     {
       "lmbda": 1.0,
-      "gamma": 3.5,
-      "f": "f(x,y) = -4.0 + 3.5 * (x*x + y)"
+      "gamma": 0.0,
+      "sigma": 1.2,
+      "hi": 0.7,
+      "f": "f(x,y,t) = 2.0 * hi + 2.0 * sigma * t - 4.0 * lmbda"
     }
   ],
   "borders": [
@@ -37,13 +39,13 @@
     }
   ],
   "boundary_formulas": [
-    "f(x,y) = x*x + y",
+    "f(x,y,t) = x*x + y + t*t",
     "f(x,y) = 1.0",
-    "Ubeta(x,y) = x*x + x + y; beta = 2.0"
+    "Ubeta(x,y,t) = x*x + x + y + t*t; beta = 2.0"
   ],
-  "abscissa_splits": 3,
-  "ordinate_splits": 3,
-  "abscissa_k": 1,
-  "ordinate_k": 1,
+  "abscissa_splits": 10,
+  "ordinate_splits": 10,
+  "abscissa_k": 0.8,
+  "ordinate_k": 0.8,
   "refinement": 0
 }

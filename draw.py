@@ -1,21 +1,9 @@
-#!/usr/bin/env python3
-"""
-Mesh + Contour viewer
-- expects a folder `Output` in the same directory
-- files in Output:
-  - points : each line "r z" (two floats)
-  - elements: each line "i1 i2 i3 i4" (four ints) - node indices: left-bottom, right-bottom, left-top, right-top
-  - solution: each line "x y value" (three floats)
-
-Run: python3 mesh_viewer.py
-Dependencies: numpy, matplotlib
-"""
 import os
 import sys
 import numpy as np
 import matplotlib
 
-matplotlib.use('TkAgg')  # use Tk backend for embedding
+matplotlib.use('TkAgg')
 from matplotlib.figure import Figure
 from matplotlib.collections import PolyCollection
 import matplotlib.tri as mtri
@@ -73,8 +61,6 @@ def read_solution(path):
     return np.array(data)  # shape (K,3)
 
 
-# ---------------------- Loading data ----------------------
-
 def detect_and_load(output_dir='output'):
     pts_path = os.path.join(output_dir, 'points')
     elems_path = os.path.join(output_dir, 'elements')
@@ -90,7 +76,6 @@ def detect_and_load(output_dir='output'):
     elems = read_elements(elems_path)
     sol = read_solution(sol_path)
 
-    # detect whether element indices are 1-based (common) or 0-based
     if elems.size == 0:
         raise ValueError('No elements read')
     if pts.size == 0:
@@ -102,13 +87,9 @@ def detect_and_load(output_dir='output'):
     return pts, elems, sol
 
 
-# ---------------------- Plotting helpers ----------------------
-
 def build_polygons(pts, elems):
-    # elems are [lb, rb, lt, rt] indexes
     polys = []
     for el in elems:
-        # gather node coordinates in natural rectangular order
         lb = pts[el[0]]  # [x,y]
         rb = pts[el[1]]
         lt = pts[el[2]]

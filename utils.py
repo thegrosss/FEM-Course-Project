@@ -31,7 +31,7 @@ class Utils:
                 file.write(f"{n.element} {n.local_border} {n.value}\n")
 
     @staticmethod
-    def save_solution(mesh: Mesh, solution: list[float]):
+    def save_solution(mesh: Mesh, solution: list[float], path: str = "output/solution"):
         dict_solution: dict[int, tuple[Point, float]] = {}
 
         for element in mesh.elements:
@@ -46,9 +46,39 @@ class Utils:
 
         ordered_solution = sorted(dict_solution.items(), key=lambda x: x[0])
 
-        with open("output/solution", "w") as file:
+        with open(path, "w") as file:
             for global_idx, (point, value) in ordered_solution:
                 file.write(f"{point.r} {point.z} {value}\n")
+
+    @staticmethod
+    def save_time_layers(time_layers: list[float]):
+        with open("output/time_layers", "w") as file:
+            for layer in time_layers:
+                file.write(f"{layer}\n")
+
+    @staticmethod
+    def save_time_solutions(mesh: Mesh, time_solutions: list[tuple[float, list[float]]]):
+        with open("output/solution_time", "w") as file:
+            for time, solution in time_solutions:
+                file.write(f"t {time}\n")
+
+                dict_solution: dict[int, tuple[Point, float]] = {}
+                for element in mesh.elements:
+                    for i in range(9):
+                        g = element.get_global_basis_index(i)
+
+                        if g in dict_solution:
+                            continue
+
+                        global_point = element.get_basis_node_position(i, lambda idx: mesh.points[idx])
+                        dict_solution[g] = (global_point, solution[g])
+
+                ordered_solution = sorted(dict_solution.items(), key=lambda x: x[0])
+
+                for _, (point, value) in ordered_solution:
+                    file.write(f"{point.r} {point.z} {value}\n")
+
+                file.write("\n")
 
     @staticmethod
     def save_basis_info(mesh: Mesh):

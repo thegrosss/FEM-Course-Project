@@ -47,9 +47,8 @@ class SparseMatrix:
 
         with open(path, "w") as file:
             for i in range(self.size):
-                for j in range(self.size):
-                    file.write(f"{a[i][j]:.7f}\t")
-                file.write("\n")
+                row = [f"{a[i][j]:.7f}" for j in range(self.size)]
+                file.write("\t".join(row) + "\n")
 
     def clear(self):
         for i in range(self.size):
